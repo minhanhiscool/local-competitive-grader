@@ -213,7 +213,7 @@ void parseCommandFlags(Config &config, int argc, char *argv[]) {
     std::string_view arg(argv[i]);
 
     if (positional) {
-      config.sources.push_back(std::filesystem::path(arg));
+      config.sources.emplace_back(arg);
       continue;
     }
     if (arg == "--") {
@@ -314,7 +314,7 @@ void parseCommandFlags(Config &config, int argc, char *argv[]) {
       throw std::invalid_argument("Unknown option: " + std::string(arg));
     }
 
-    config.sources.push_back(std::filesystem::path(arg));
+    config.sources.emplace_back(arg);
   }
 
   prepareTestcasePaths(testcaseDir, testcaseInput, testcaseOutput, config);

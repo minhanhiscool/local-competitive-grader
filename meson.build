@@ -14,7 +14,18 @@ project(
 )
 
 subdir('src')
+cmake = import('cmake')
+
+opts = cmake.subproject_options()
+opts.add_cmake_defines(
+  {
+    'REPROC++': true,
+  },
+)
+
+reproc_proj = cmake.subproject('reproc', options: opts)
+reproc_dep = reproc_proj.dependency('reproc++')
 
 json = dependency('nlohmann_json', required: true)
 
-executable('grade', src_files, dependencies: [json])
+executable('grade', src_files, dependencies: [json, reproc_dep])
