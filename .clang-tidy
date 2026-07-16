@@ -1,0 +1,26 @@
+---
+Checks: >
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  bugprone-*,
+  misc-*,
+  -modernize-use-trailing-return-type,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers
+
+HeaderFilterRegex: '.*'
+
+CheckOptions:
+  - key:             modernize-use-nullptr.NullMacros
+    value:           'NULL'
+  - key:             modernize-use-override.IncludeStyle
+    value:           'All'
+  - key:             readability-identifier-naming.NamespaceCase
+    value:           'camelBack'
+  - key:             cppcoreguidelines-pro-type-member-init.Hint
+    value:           'true'
+...
+
