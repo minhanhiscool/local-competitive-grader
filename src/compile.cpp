@@ -3,6 +3,7 @@
 #include "reproc++/run.hpp"
 #include <chrono>
 #include <cstdlib>
+#include <expected>
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -10,31 +11,24 @@
 #include <ranges>
 #include <stdexcept>
 #include <string>
-#include <system_error>
 #include <vector>
 
 namespace {
 
 bool isAvailable(std::string_view compiler) {
-    reproc::process process;
     reproc::options options;
-
-    options.redirect.out.type = options.redirect.err.type =
-        reproc::redirect::discard;
+    options.stop.first = {.action = reproc::stop::wait,
+                          .timeout = reproc::milliseconds{5000}};
 
     std::array args{
         std::string(compiler),
         std::string("--version"),
     };
 
-    std::error_code ecode = process.start(args, options);
+    auto [status, ecode] =
+        reproc::run(args, options, reproc::sink::null, reproc::sink::null);
 
-    if (ecode) {
-        return false;
-    }
-
-    auto [status, wait_ec] = process.wait(reproc::infinite);
-    return !wait_ec && status == 0;
+    return !ecode && status == 0;
 }
 
 std::string detectCompiler() {
@@ -61,11 +55,12 @@ std::string detectCompiler() {
 
 } // namespace
 
-bool compile(const Config &config, const std::filesystem::path &source) {
-    static const std::string compiler =
-        config.compiler ? *config.compiler : detectCompiler();
+compilerResult compile(const Config &config,
+                       const std::filesystem::path &source) {
+    static const std::string detectedCompiler = detectCompiler();
+    std::string compiler = config.compiler.value_or(detectedCompiler);
 
-    std::string outputName = source.stem().string();
+    std::filesystem::path outputName = source.stem().string();
 #ifdef _WIN32
     outputName += ".exe";
 #endif
@@ -93,24 +88,22 @@ bool compile(const Config &config, const std::filesystem::path &source) {
     auto start = std::chrono::steady_clock::now();
 
     reproc::options options;
-    options.redirect.out.type = reproc::redirect::pipe;
-    options.redirect.err.type = reproc::redirect::pipe;
     options.stop.first = {.action = reproc::stop::wait,
-                          .timeout = reproc::infinite};
+                          .timeout = reproc::milliseconds{10000}};
 
     std::string compilerOutput;
-    auto [status, wait_ec] =
+    auto [status, ecode] =
         reproc::run(args, options, reproc::sink::string(compilerOutput),
                     reproc::sink::string(compilerOutput));
 
     auto end = std::chrono::steady_clock::now();
     double elapsed = std::chrono::duration<double>(end - start).count();
 
-    if (wait_ec) {
+    if (ecode) {
         std::println(std::cerr,
                      "\033[1;31mError running compiler process:\033[0m {}",
-                     wait_ec.message());
-        return false;
+                     ecode.message());
+        return std::unexpected(CompilerError{.log = std::move(compilerOutput)});
     }
 
     bool hasOutput = !compilerOutput.empty();
@@ -121,13 +114,15 @@ bool compile(const Config &config, const std::filesystem::path &source) {
         if (hasOutput) {
             std::println(std::cerr, "{}", compilerOutput);
         }
-        return false;
+        return std::unexpected(CompilerError{.log = std::move(compilerOutput)});
     }
     if (hasOutput) {
         std::println(std::cerr, "\033[1;33mCompiler Warnings:\033[0m {}",
                      source.string());
         std::println(std::cerr, "{}", compilerOutput);
     }
+
     std::println(std::cout, "Compilation done in {:.3f}s.", elapsed);
-    return true;
+    return CompilerSuccess{.binary = std::move(outputName),
+                           .log = std::move(compilerOutput)};
 }

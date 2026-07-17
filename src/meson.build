@@ -1,1 +1,1 @@
-src_files = files('compile.cpp', 'main.cpp', 'parseConfig.cpp')
+src_files = files('compile.cpp', 'execute.cpp', 'main.cpp', 'parseConfig.cpp')

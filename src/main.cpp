@@ -1,4 +1,5 @@
 #include "compile.h"
+#include "execute.h"
 #include "parseConfig.h"
 #include <cstdlib>
 #include <exception>
@@ -28,10 +29,11 @@ int main(int argc, char *argv[]) {
     }
 
     for (const auto &source : config.sources) {
-        if (!compile(config, source)) {
+        auto result = compile(config, source);
+        if (!result) {
             continue;
         }
-        execute();
+        execute(config, result->binary);
     }
 
     return EXIT_SUCCESS;
