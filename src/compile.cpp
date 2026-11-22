@@ -88,6 +88,8 @@ compilerResult compile(const Config &config,
     auto start = std::chrono::steady_clock::now();
 
     reproc::options options;
+    options.redirect.out.type = reproc::redirect::pipe;
+    options.redirect.err.type = reproc::redirect::pipe;
     options.stop.first = {.action = reproc::stop::wait,
                           .timeout = reproc::milliseconds{10000}};
 

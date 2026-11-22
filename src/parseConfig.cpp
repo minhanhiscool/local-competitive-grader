@@ -1,11 +1,11 @@
 #include "parseConfig.h"
-#include "version.h"
 #include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <print>
 #include <ranges>
 #include <span>
@@ -82,6 +82,7 @@ void printHelp() {
         "\033[1;4mOptions:\033[0m\n"
         "-t, --time-limit <int>         Time limit in milliseconds\n"
         "-m, --memory-limit <int>       Memory limit in MiB\n"
+        "-O, --output-limit <int>       Output limit in bytes\n"
         "-i, --testcase-input <path>    Testcase input file "
         "(incompatible with -d)\n"
         "-o, --testcase-output <path>   Testcase output file "
@@ -123,33 +124,38 @@ void prepareTestcasePaths(
 }
 } // namespace
 
-std::optional<std::filesystem::path>
-scanCommandFlags(std::span<char const *const> args) {
+ScanCommandFlagsRes scanCommandFlags(std::span<char const *const> args) {
+    std::optional<std::filesystem::path> path;
+    if (args.size() == 1) {
+        printHelp();
+        return {.exit = true, .configFile = std::nullopt};
+    }
     for (std::size_t i = 1; i < args.size(); i++) {
         std::string_view arg(args[i]);
         if (arg == "-h" || arg == "--help") {
             printHelp();
-            std::exit(EXIT_SUCCESS);
+            return {.exit = true, .configFile = std::nullopt};
         }
 
         if (arg == "-V" || arg == "--version") {
             std::println(std::cout, "grade v{}", VERSION);
-            std::exit(EXIT_SUCCESS);
+            return {.exit = true, .configFile = std::nullopt};
         }
 
         if (auto value =
                 optionValue(arg, std::nullopt, "--config-file", i, args)) {
 
-            std::filesystem::path path(*value);
-            if (!std::filesystem::is_regular_file(path)) {
-                throw std::invalid_argument("Invalid config file path: " +
-                                            path.string());
+            if (path.has_value()) {
+                throw std::invalid_argument("Config file path declared twice");
             }
-            return path;
+            path = *value;
         }
     }
-
-    return std::nullopt;
+    if (path && !std::filesystem::is_regular_file(*path)) {
+        throw std::invalid_argument("Invalid config file path: " +
+                                    path->string());
+    }
+    return {.exit = false, .configFile = path};
 }
 
 void parseConfigFile(Config &config, const std::filesystem::path &jsonfile) {
@@ -194,6 +200,16 @@ void parseConfigFile(Config &config, const std::filesystem::path &jsonfile) {
                 "Invalid config file: Memory limit cannot be negative");
         }
         config.memoryLimit = MiB(memoryLimit);
+    }
+
+    if (jsconfig.contains("output_limit")) {
+        int outputLimit = jsconfig.at("output_limit").get<int>();
+
+        if (outputLimit < 0) {
+            throw std::invalid_argument(
+                "Invalid config file: Output limit cannot be negative");
+        }
+        config.outputLimit = outputLimit;
     }
 
     if (jsconfig.contains("compile_flags")) {
@@ -247,6 +263,7 @@ void parseCommandFlags(Config &config, std::span<char const *const> args) {
         if (auto value =
                 optionValue(arg, std::nullopt, "--compiler", i, args)) {
             config.compiler = *value;
+            continue;
         }
 
         if (auto value = optionValue(arg, "-t", "--time-limit", i, args)) {
@@ -268,6 +285,16 @@ void parseCommandFlags(Config &config, std::span<char const *const> args) {
             }
             config.memoryLimit = MiB(raw);
 
+            continue;
+        }
+
+        if (auto value = optionValue(arg, "-O", "--output-limit", i, args)) {
+            int raw = parseInteger(*value, "output limit");
+
+            if (raw < 0) {
+                throw std::invalid_argument("Output limit cannot be negative");
+            }
+            config.outputLimit = raw;
             continue;
         }
 
@@ -347,6 +374,10 @@ void parseCommandFlags(Config &config, std::span<char const *const> args) {
         }
 
         config.sources.emplace_back(arg);
+    }
+
+    if (compilerFlags) {
+        config.compileFlags = std::move(*compilerFlags);
     }
 
     prepareTestcasePaths(testcaseDir, testcaseInput, testcaseOutput, config);

@@ -9,11 +9,10 @@ project(
     'warning_level=3',
     'buildtype=debugoptimized',
     'b_lto=true',
-    'b_sanitize=address,undefined,leak',
+    'b_colorout=always',
   ],
 )
 
-subdir('src')
 cmake = import('cmake')
 
 opts = cmake.subproject_options()
@@ -28,4 +27,44 @@ reproc_dep = reproc_proj.dependency('reproc++')
 
 json = dependency('nlohmann_json', required: true)
 
-executable('grade', src_files, dependencies: [json, reproc_dep])
+subdir('src')
+subdir('tests')
+
+sanitize_opts = []
+if get_option('buildtype') == 'debugoptimized'
+  sanitize_opts = ['b_sanitize=address,undefined,leak']
+  catch2 = dependency('catch2-with-main', required: true)
+endif
+
+src_inc = include_directories('src')
+
+grader_lib = static_library(
+  'grader',
+  sources: src_files,
+  include_directories: src_inc,
+  dependencies: [reproc_dep, json],
+  override_options: sanitize_opts,
+)
+
+executable(
+  'grade',
+  'src/main.cpp',
+  include_directories: src_inc,
+  dependencies: [reproc_dep, json],
+  override_options: sanitize_opts,
+  link_with: [grader_lib],
+  build_subdir: 'bin',
+)
+
+if get_option('buildtype') == 'debugoptimized'
+  grader_test = executable(
+    'grader_test',
+    sources: test_files,
+    include_directories: src_inc,
+    dependencies: [reproc_dep, json, catch2],
+    override_options: sanitize_opts,
+    link_with: [grader_lib],
+    build_subdir: 'bin',
+  )
+  test('grader_test', grader_test)
+endif

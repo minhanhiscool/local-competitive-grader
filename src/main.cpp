@@ -1,5 +1,5 @@
 #include "compile.h"
-#include "execute.h"
+#include "judge.h"
 #include "parseConfig.h"
 #include <cstdlib>
 #include <exception>
@@ -12,11 +12,13 @@
 int main(int argc, char *argv[]) {
     Config config;
     try {
-        std::optional<std::filesystem::path> configFile =
-            scanCommandFlags(std::span(argv, argc));
+        ScanCommandFlagsRes result = scanCommandFlags(std::span(argv, argc));
+        if (result.exit) {
+            return EXIT_SUCCESS;
+        }
 
-        if (configFile) {
-            config.configFile = *configFile;
+        if (result.configFile) {
+            config.configFile = *result.configFile;
         }
 
         parseConfigFile(config, config.configFile);
@@ -33,7 +35,7 @@ int main(int argc, char *argv[]) {
         if (!result) {
             continue;
         }
-        execute(config, result->binary);
+        judge(config, result->binary);
     }
 
     return EXIT_SUCCESS;

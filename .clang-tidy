@@ -11,7 +11,7 @@ Checks: >
   -cppcoreguidelines-avoid-magic-numbers,
   -readability-magic-numbers
 
-HeaderFilterRegex: '.*'
+HeaderFilterRegex: '.*\/src\/.*'
 
 CheckOptions:
   - key:             modernize-use-nullptr.NullMacros
