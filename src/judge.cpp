@@ -71,10 +71,11 @@ Results execute(const Config &config, const std::filesystem::path &input,
     Results result;
     std::string output;
 
+    std::string inputStr = input.string();
     reproc::options options;
 
     options.redirect.in.type = reproc::redirect::path_;
-    options.redirect.in.path = input.c_str();
+    options.redirect.in.path = inputStr.c_str();
 
     options.redirect.out.type = reproc::redirect::pipe;
     options.redirect.err.type = reproc::redirect::discard;

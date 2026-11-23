@@ -32,7 +32,11 @@ subdir('tests')
 
 sanitize_opts = []
 if get_option('buildtype') == 'debugoptimized'
-  sanitize_opts = ['b_sanitize=address,undefined,leak']
+  if host_machine.system() == 'linux'
+    sanitize_opts = ['b_sanitize=address,undefined,leak']
+  elif host_machine.system() == 'darwin'
+    sanitize_opts = ['b_sanitize=address,undefined']
+  endif
   catch2 = dependency('catch2-with-main', required: true)
 endif
 

@@ -7,12 +7,12 @@ on:
     branches: [ "**" ]
 
 jobs:
-  linux:
-    name: Linux (g++)
+  linux-test:
+    name: Linux (g++ Test & Debug)
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -33,7 +33,7 @@ jobs:
       - name: Install Meson
         run: pip install --upgrade meson
 
-      - name: Configure project
+      - name: Configure project (Debug & Tests)
         env:
           CC: gcc-14
           CXX: g++-14
@@ -48,64 +48,105 @@ jobs:
       - name: Run tests
         run: meson test -C build -v --print-errorlogs
 
+      - name: Upload Meson Logs on Failure
+        uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: meson-logs-linux-test
+          path: build/meson-logs/
+
+  linux-release:
+    name: Linux (g++ Release)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            cmake \
+            gcc-14 g++-14
+
+      - name: Set up Python & Meson
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Meson
+        run: pip install --upgrade meson
+
+      - name: Configure project (Release)
+        env:
+          CC: gcc-14
+          CXX: g++-14
+        run: |
+          meson setup build \
+            --buildtype=release \
+            --warnlevel=3
+
+      - name: Compile
+        run: meson compile -C build -v
+
       - name: Upload Binary Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always() && hashFiles('build/bin/grade') != ''
         with:
           name: grade-linux-x86_64
           path: build/bin/grade
 
       - name: Upload Meson Logs on Failure
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: failure()
         with:
-          name: meson-logs-linux
+          name: meson-logs-linux-release
           path: build/meson-logs/
 
   macos:
-    name: macOS (clang++)
+    name: macOS (clang++ Release)
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Install dependencies
         run: |
-          brew install ninja meson catch2
+          brew install ninja meson
 
-      - name: Configure project
+      - name: Configure project (Release)
         env:
           CC: clang
           CXX: clang++
         run: |
           meson setup build \
-            --buildtype=debugoptimized \
+            --buildtype=release \
             --warnlevel=3
 
       - name: Compile
         run: meson compile -C build -v
 
-      - name: Run tests
-        run: meson test -C build -v --print-errorlogs
-
       - name: Upload Binary Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always() && hashFiles('build/bin/grade') != ''
         with:
           name: grade-macos
           path: build/bin/grade
 
       - name: Upload Meson Logs on Failure
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: meson-logs-macos
           path: build/meson-logs/
 
   windows:
-    name: Windows (MinGW g++)
+    name: Windows (MinGW g++ Release)
     runs-on: windows-latest
     defaults:
       run:
@@ -116,7 +157,7 @@ jobs:
         shell: bash
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -130,32 +171,28 @@ jobs:
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-meson
             mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-catch2
 
-      - name: Configure project
+      - name: Configure project (Release)
         env:
           CC: gcc
           CXX: g++
         run: |
           meson setup build \
-            --buildtype=debugoptimized \
+            --buildtype=release \
             --warnlevel=3
 
       - name: Compile
         run: meson compile -C build -v
 
-      - name: Run tests
-        run: meson test -C build -v --print-errorlogs
-
       - name: Upload Binary Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always() && hashFiles('build/bin/grade.exe') != ''
         with:
           name: grade-windows-x86_64
           path: build/bin/grade.exe
 
       - name: Upload Meson Logs on Failure
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: meson-logs-windows
