@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  linux:
+    name: Linux (g++)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            cmake \
+            catch2 \
+            gcc-14 g++-14
+
+      - name: Set up Python & Meson
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Meson
+        run: pip install --upgrade meson
+
+      - name: Configure project
+        env:
+          CC: gcc-14
+          CXX: g++-14
+        run: |
+          meson setup build \
+            --buildtype=debugoptimized \
+            --warnlevel=3
+
+      - name: Compile
+        run: meson compile -C build -v
+
+      - name: Run tests
+        run: meson test -C build -v --print-errorlogs
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('build/bin/grade') != ''
+        with:
+          name: grade-linux-x86_64
+          path: build/bin/grade
+
+      - name: Upload Meson Logs on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: meson-logs-linux
+          path: build/meson-logs/
+
+  macos:
+    name: macOS (clang++)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          brew install ninja meson catch2
+
+      - name: Configure project
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          meson setup build \
+            --buildtype=debugoptimized \
+            --warnlevel=3
+
+      - name: Compile
+        run: meson compile -C build -v
+
+      - name: Run tests
+        run: meson test -C build -v --print-errorlogs
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('build/bin/grade') != ''
+        with:
+          name: grade-macos
+          path: build/bin/grade
+
+      - name: Upload Meson Logs on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: meson-logs-macos
+          path: build/meson-logs/
+
+  windows:
+    name: Windows (MinGW g++)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Set git CRLF handling
+        run: git config --global core.autocrlf false
+        shell: bash
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSYS2 (UCRT64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-catch2
+
+      - name: Configure project
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          meson setup build \
+            --buildtype=debugoptimized \
+            --warnlevel=3
+
+      - name: Compile
+        run: meson compile -C build -v
+
+      - name: Run tests
+        run: meson test -C build -v --print-errorlogs
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('build/bin/grade.exe') != ''
+        with:
+          name: grade-windows-x86_64
+          path: build/bin/grade.exe
+
+      - name: Upload Meson Logs on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: meson-logs-windows
+          path: build/meson-logs/
