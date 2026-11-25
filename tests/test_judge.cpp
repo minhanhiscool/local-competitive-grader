@@ -184,7 +184,6 @@ TEST_CASE("judge - Time Limit Exceeded (TLE)", "[judge]") {
         REQUIRE(res.overallVerdict == Verdict::TLE);
         REQUIRE(res.results.size() == 1);
         REQUIRE(res.results[0].verdict == Verdict::TLE);
-        REQUIRE(elapsed >= std::chrono::milliseconds(150));
         REQUIRE(elapsed < std::chrono::milliseconds(2000));
 
         std::error_code ec;

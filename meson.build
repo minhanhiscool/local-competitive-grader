@@ -65,7 +65,7 @@ executable(
   build_subdir: 'bin',
 )
 
-if get_option('buildtype') == 'debugoptimized'
+if get_option('tests')
   grader_test = executable(
     'grader_test',
     sources: test_files,

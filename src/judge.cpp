@@ -3,7 +3,6 @@
 #include "reproc++/drain.hpp"
 #include "reproc++/reproc.hpp"
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -26,8 +25,9 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <psapi.h>
 #include <windows.h>
+// buffer for clang-format stupid header reordering
+#include <psapi.h>
 #endif
 
 namespace {
