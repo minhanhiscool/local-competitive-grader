@@ -40,13 +40,18 @@ if get_option('buildtype') == 'debugoptimized'
   catch2 = dependency('catch2-with-main', required: true)
 endif
 
+base_deps = [reproc_dep, json]
+if host_machine.system() == 'windows'
+  base_deps += meson.get_compiler('cpp').find_library('psapi', required: true)
+endif
+
 src_inc = include_directories('src')
 
 grader_lib = static_library(
   'grader',
   sources: src_files,
   include_directories: src_inc,
-  dependencies: [reproc_dep, json],
+  dependencies: base_deps,
   override_options: sanitize_opts,
 )
 
@@ -54,7 +59,7 @@ executable(
   'grade',
   'src/main.cpp',
   include_directories: src_inc,
-  dependencies: [reproc_dep, json],
+  dependencies: base_deps,
   override_options: sanitize_opts,
   link_with: [grader_lib],
   build_subdir: 'bin',
@@ -65,7 +70,7 @@ if get_option('buildtype') == 'debugoptimized'
     'grader_test',
     sources: test_files,
     include_directories: src_inc,
-    dependencies: [reproc_dep, json, catch2],
+    dependencies: base_deps + [catch2],
     override_options: sanitize_opts,
     link_with: [grader_lib],
     build_subdir: 'bin',

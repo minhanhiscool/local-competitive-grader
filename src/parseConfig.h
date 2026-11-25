@@ -1,10 +1,12 @@
 #pragma once
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -22,6 +24,11 @@ struct TestcasePaths {
     std::filesystem::path output;
 };
 
+struct Subtask {
+    std::vector<std::filesystem::path> dirs;
+    std::uint8_t percentage;
+};
+
 // Either testcase directory or explicit testcase paths
 using TestcaseSource = std::variant<std::filesystem::path, TestcasePaths>;
 
@@ -37,9 +44,11 @@ struct Config {
                                           "-lm"};
 
     TestcaseSource testcases{std::filesystem::path("test/")};
+    std::vector<Subtask> subtasks;
 
     std::filesystem::path configFile{"config.json"};
 
+    bool partial{false};
     bool verbose{false};
 };
 

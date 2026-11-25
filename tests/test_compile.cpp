@@ -58,5 +58,22 @@ TEST_CASE("compile - compilation results", "[compile]") {
         fs::remove(result->binary, ec);
     }
 
+    SECTION("Explicit config.compiler overrides detected default per call") {
+        auto validSource = tempDir / "override_compiler.cpp";
+        {
+            std::ofstream out(validSource);
+            out << "int main() { return 0; }\n";
+        }
+
+        auto defaultRes = compile(config, validSource);
+        REQUIRE(defaultRes.has_value());
+        std::error_code ec;
+        fs::remove(defaultRes->binary, ec);
+
+        config.compiler = "nonexistent_cpp_compiler_xyz";
+        auto invalidCompilerRes = compile(config, validSource);
+        REQUIRE_FALSE(invalidCompilerRes.has_value());
+    }
+
     fs::remove_all(tempDir);
 }

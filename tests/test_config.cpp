@@ -393,4 +393,299 @@ TEST_CASE("scanCommandFlags - help, version and blank invocations",
         REQUIRE(result.exit == true);
         REQUIRE_FALSE(result.configFile.has_value());
     }
+
+    SECTION("Positional separator -- stops flag scanning") {
+        std::array<const char *, 4> args{"grade", "--", "-h", "--config-file"};
+        auto result = scanCommandFlags(args);
+        REQUIRE_FALSE(result.exit);
+        REQUIRE_FALSE(result.configFile.has_value());
+    }
+}
+
+TEST_CASE("parseCommandFlags - partial, combined flags, and empty compile flags",
+          "[config][cli]") {
+    Config config;
+
+    SECTION("Short and long partial flags") {
+        std::array<const char *, 3> args1{"grade", "-p", "sol.cpp"};
+        REQUIRE_NOTHROW(parseCommandFlags(config, args1));
+        REQUIRE(config.partial == true);
+
+        Config config2;
+        std::array<const char *, 3> args2{"grade", "--partial", "sol.cpp"};
+        REQUIRE_NOTHROW(parseCommandFlags(config2, args2));
+        REQUIRE(config2.partial == true);
+    }
+
+    SECTION("Combined short flags -vp") {
+        std::array<const char *, 3> args{"grade", "-vp", "sol.cpp"};
+        REQUIRE_NOTHROW(parseCommandFlags(config, args));
+        REQUIRE(config.verbose == true);
+        REQUIRE(config.partial == true);
+    }
+
+    SECTION("Unknown short flag throws invalid_argument") {
+        std::array<const char *, 3> args{"grade", "-vx", "sol.cpp"};
+        REQUIRE_THROWS_AS(parseCommandFlags(config, args),
+                          std::invalid_argument);
+    }
+
+    SECTION("Empty -c clears default compile flags") {
+        std::array<const char *, 4> args{"grade", "-c", "", "sol.cpp"};
+        REQUIRE_NOTHROW(parseCommandFlags(config, args));
+        REQUIRE(config.compileFlags.empty());
+    }
+}
+
+TEST_CASE("parseConfigFile - subtasks and strict JSON validation",
+          "[config][json][subtasks]") {
+    auto tempDir = fs::temp_directory_path() / "grade_test_json_subtasks";
+    fs::remove_all(tempDir);
+    fs::create_directories(tempDir / "tests" / "sub1");
+    fs::create_directories(tempDir / "tests" / "sub2");
+    fs::create_directories(tempDir / "tests" / "sub3");
+    auto inFile = tempDir / "sample.in";
+    auto outFile = tempDir / "sample.out";
+    {
+        std::ofstream in(inFile);
+        std::ofstream out(outFile);
+    }
+    auto configFile = tempDir / "config.json";
+
+    SECTION("Valid subtasks with string and array dirs relative to testcase_dir") {
+        {
+            std::ofstream out(configFile);
+            out << R"({
+                "testcase_dir": "tests",
+                "partial": true,
+                "subtasks": [
+                    { "dirs": "sub1", "percentage": 30 },
+                    { "dirs": ["sub2", "sub3"], "percentage": 70 }
+                ]
+            })";
+        }
+
+        Config config;
+        REQUIRE_NOTHROW(parseConfigFile(config, configFile));
+        REQUIRE(config.partial == true);
+        REQUIRE(std::holds_alternative<fs::path>(config.testcases));
+        REQUIRE(std::get<fs::path>(config.testcases) == tempDir / "tests");
+        REQUIRE(config.subtasks.size() == 2);
+        REQUIRE(config.subtasks[0].percentage == 30);
+        REQUIRE(config.subtasks[0].dirs ==
+                std::vector<fs::path>{tempDir / "tests" / "sub1"});
+        REQUIRE(config.subtasks[1].percentage == 70);
+        REQUIRE(config.subtasks[1].dirs ==
+                std::vector<fs::path>{tempDir / "tests" / "sub2",
+                                      tempDir / "tests" / "sub3"});
+    }
+
+    SECTION("Empty subtasks array is allowed without testcase_dir") {
+        {
+            std::ofstream out(configFile);
+            out << R"({ "subtasks": [] })";
+        }
+        Config config;
+        REQUIRE_NOTHROW(parseConfigFile(config, configFile));
+        REQUIRE(config.subtasks.empty());
+    }
+
+    SECTION("Subtasks without testcase_dir throws") {
+        {
+            std::ofstream out(configFile);
+            out << R"({
+                "subtasks": [ { "dirs": "sub1", "percentage": 100 } ]
+            })";
+        }
+        Config config;
+        REQUIRE_THROWS_AS(parseConfigFile(config, configFile),
+                          std::invalid_argument);
+    }
+
+    SECTION("Subtasks with testcase_input and testcase_output throws") {
+        {
+            std::ofstream out(configFile);
+            out << R"({
+                "testcase_input": "sample.in",
+                "testcase_output": "sample.out",
+                "subtasks": [ { "dirs": "sub1", "percentage": 100 } ]
+            })";
+        }
+        Config config;
+        REQUIRE_THROWS_AS(parseConfigFile(config, configFile),
+                          std::invalid_argument);
+    }
+
+    SECTION("Subtasks percentage not summing to 100 throws") {
+        {
+            std::ofstream out(configFile);
+            out << R"({
+                "testcase_dir": "tests",
+                "subtasks": [
+                    { "dirs": "sub1", "percentage": 40 },
+                    { "dirs": "sub2", "percentage": 50 }
+                ]
+            })";
+        }
+        Config config;
+        REQUIRE_THROWS_AS(parseConfigFile(config, configFile),
+                          std::invalid_argument);
+    }
+
+    SECTION("Subtask with nonexistent directory inside testcase_dir throws") {
+        {
+            std::ofstream out(configFile);
+            out << R"({
+                "testcase_dir": "tests",
+                "subtasks": [
+                    { "dirs": "missing", "percentage": 100 }
+                ]
+            })";
+        }
+        Config config;
+        REQUIRE_THROWS_AS(parseConfigFile(config, configFile),
+                          std::invalid_argument);
+    }
+
+    SECTION("Non-integer JSON numbers reject bools and floats") {
+        {
+            std::ofstream out(configFile);
+            out << R"({ "time_limit": true })";
+        }
+        Config config;
+        REQUIRE_THROWS_AS(parseConfigFile(config, configFile),
+                          std::invalid_argument);
+
+        {
+            std::ofstream out(configFile);
+            out << R"({ "memory_limit": 12.5 })";
+        }
+        Config config2;
+        REQUIRE_THROWS_AS(parseConfigFile(config2, configFile),
+                          std::invalid_argument);
+
+        {
+            std::ofstream out(configFile);
+            out << R"({
+                "testcase_dir": "tests",
+                "subtasks": [ { "dirs": "sub1", "percentage": 99.5 } ]
+            })";
+        }
+        Config config3;
+        REQUIRE_THROWS_AS(parseConfigFile(config3, configFile),
+                          std::invalid_argument);
+    }
+
+    fs::remove_all(tempDir);
+}
+
+TEST_CASE("config + CLI integration - precedence and subtask clearing",
+          "[config][integration]") {
+    auto tempDir = fs::temp_directory_path() / "grade_test_integration";
+    fs::remove_all(tempDir);
+    auto testsDir = tempDir / "tests";
+    auto otherDir = tempDir / "other_tests";
+    fs::create_directories(testsDir / "sub1");
+    fs::create_directories(testsDir / "sub2");
+    fs::create_directories(otherDir);
+
+    auto inFile = tempDir / "custom.in";
+    auto outFile = tempDir / "custom.out";
+    {
+        std::ofstream in(inFile);
+        std::ofstream out(outFile);
+    }
+
+    auto configFile = tempDir / "config.json";
+    {
+        std::ofstream out(configFile);
+        out << R"({
+            "compiler": "g++",
+            "time_limit": 1500,
+            "memory_limit": 256,
+            "output_limit": 4096,
+            "compile_flags": ["-O2", "-Wall"],
+            "testcase_dir": "tests",
+            "verbose": false,
+            "partial": false,
+            "subtasks": [
+                { "dirs": ["sub1"], "percentage": 40 },
+                { "dirs": ["sub2"], "percentage": 60 }
+            ]
+        })";
+    }
+
+    std::string cfgStr = configFile.string();
+
+    SECTION("CLI scalar overrides keep config subtasks when testcases not overridden") {
+        std::array<const char *, 9> args{
+            "grade", "--config-file", cfgStr.c_str(), "-t", "3000",
+            "--compiler", "clang++", "-vp", "sol.cpp"};
+
+        Config config;
+        auto scan = scanCommandFlags(args);
+        REQUIRE_FALSE(scan.exit);
+        REQUIRE(scan.configFile == configFile);
+        config.configFile = *scan.configFile;
+
+        REQUIRE_NOTHROW(parseConfigFile(config, config.configFile));
+        REQUIRE_NOTHROW(parseCommandFlags(config, args));
+
+        REQUIRE(config.compiler == "clang++");
+        REQUIRE(config.timeLimit == std::chrono::milliseconds(3000));
+        REQUIRE(config.memoryLimit == MiB(256));
+        REQUIRE(config.outputLimit == 4096);
+        REQUIRE(config.compileFlags == std::vector<std::string>{"-O2", "-Wall"});
+        REQUIRE(config.verbose == true);
+        REQUIRE(config.partial == true);
+        REQUIRE(std::holds_alternative<fs::path>(config.testcases));
+        REQUIRE(std::get<fs::path>(config.testcases) == testsDir);
+        REQUIRE(config.subtasks.size() == 2);
+        REQUIRE(config.sources == std::vector<fs::path>{"sol.cpp"});
+    }
+
+    SECTION("CLI -i/-o throws out subtasks from config file") {
+        std::string inStr = inFile.string();
+        std::string outStr = outFile.string();
+        std::array<const char *, 8> args{
+            "grade", "--config-file", cfgStr.c_str(), "-i",
+            inStr.c_str(), "-o", outStr.c_str(), "sol.cpp"};
+
+        Config config;
+        auto scan = scanCommandFlags(args);
+        REQUIRE_FALSE(scan.exit);
+        config.configFile = *scan.configFile;
+
+        REQUIRE_NOTHROW(parseConfigFile(config, config.configFile));
+        REQUIRE(config.subtasks.size() == 2);
+
+        REQUIRE_NOTHROW(parseCommandFlags(config, args));
+        REQUIRE(config.subtasks.empty());
+        REQUIRE(std::holds_alternative<TestcasePaths>(config.testcases));
+        const auto &paths = std::get<TestcasePaths>(config.testcases);
+        REQUIRE(paths.input == inFile);
+        REQUIRE(paths.output == outFile);
+    }
+
+    SECTION("CLI -d throws out subtasks from config file") {
+        std::string otherStr = otherDir.string();
+        std::array<const char *, 6> args{"grade", "--config-file",
+                                         cfgStr.c_str(), "-d",
+                                         otherStr.c_str(), "sol.cpp"};
+
+        Config config;
+        auto scan = scanCommandFlags(args);
+        REQUIRE_FALSE(scan.exit);
+        config.configFile = *scan.configFile;
+
+        REQUIRE_NOTHROW(parseConfigFile(config, config.configFile));
+        REQUIRE(config.subtasks.size() == 2);
+
+        REQUIRE_NOTHROW(parseCommandFlags(config, args));
+        REQUIRE(config.subtasks.empty());
+        REQUIRE(std::holds_alternative<fs::path>(config.testcases));
+        REQUIRE(std::get<fs::path>(config.testcases) == otherDir);
+    }
+
+    fs::remove_all(tempDir);
 }

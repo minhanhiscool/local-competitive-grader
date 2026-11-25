@@ -144,22 +144,53 @@ TEST_CASE("judge - Time Limit Exceeded (TLE)", "[judge]") {
     config.timeLimit = std::chrono::milliseconds(150); // Short time limit
     config.testcases = TestcasePaths{.input = inPath, .output = outPath};
 
-    auto binary = compileHelper(
-        tempDir, "sol_tle.cpp",
-        "#include <chrono>\n"
-        "#include <thread>\n"
-        "int main() {\n"
-        "    std::this_thread::sleep_for(std::chrono::seconds(5));\n"
-        "    return 0;\n"
-        "}\n");
+    SECTION("Sleeping past time limit returns TLE promptly") {
+        auto binary = compileHelper(
+            tempDir, "sol_tle_sleep.cpp",
+            "#include <chrono>\n"
+            "#include <thread>\n"
+            "int main() {\n"
+            "    std::this_thread::sleep_for(std::chrono::seconds(5));\n"
+            "    return 0;\n"
+            "}\n");
 
-    auto res = judge(config, binary);
-    REQUIRE(res.overallVerdict == Verdict::TLE);
-    REQUIRE(res.results.size() == 1);
-    REQUIRE(res.results[0].verdict == Verdict::TLE);
+        auto start = std::chrono::steady_clock::now();
+        auto res = judge(config, binary);
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start);
 
-    std::error_code ec;
-    fs::remove(binary, ec);
+        REQUIRE(res.overallVerdict == Verdict::TLE);
+        REQUIRE(res.results.size() == 1);
+        REQUIRE(res.results[0].verdict == Verdict::TLE);
+        REQUIRE(elapsed < std::chrono::milliseconds(2000));
+
+        std::error_code ec;
+        fs::remove(binary, ec);
+    }
+
+    SECTION("Infinite busy loop returns TLE without hanging") {
+        auto binary = compileHelper(tempDir, "sol_tle_loop.cpp",
+                                    "int main() {\n"
+                                    "    volatile int x = 0;\n"
+                                    "    while (true) { x = x + 1; }\n"
+                                    "    return 0;\n"
+                                    "}\n");
+
+        auto start = std::chrono::steady_clock::now();
+        auto res = judge(config, binary);
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start);
+
+        REQUIRE(res.overallVerdict == Verdict::TLE);
+        REQUIRE(res.results.size() == 1);
+        REQUIRE(res.results[0].verdict == Verdict::TLE);
+        REQUIRE(elapsed >= std::chrono::milliseconds(150));
+        REQUIRE(elapsed < std::chrono::milliseconds(2000));
+
+        std::error_code ec;
+        fs::remove(binary, ec);
+    }
+
     fs::remove_all(tempDir);
 }
 
@@ -257,15 +288,15 @@ TEST_CASE("judge - Output Limit Exceeded (OLE)", "[judge]") {
     config.testcases = TestcasePaths{.input = inPath, .output = outPath};
 
     // Program outputs much more than 50 bytes
-    auto binary = compileHelper(
-        tempDir, "sol_ole.cpp",
-        "#include <iostream>\n"
-        "int main() {\n"
-        "    for (int i = 0; i < 1000; ++i) {\n"
-        "        std::cout << \"This output definitely exceeds the fifty bytes limit!\\n\";\n"
-        "    }\n"
-        "    return 0;\n"
-        "}\n");
+    auto binary = compileHelper(tempDir, "sol_ole.cpp",
+                                "#include <iostream>\n"
+                                "int main() {\n"
+                                "    for (int i = 0; i < 1000; ++i) {\n"
+                                "        std::cout << \"This output definitely "
+                                "exceeds the fifty bytes limit!\\n\";\n"
+                                "    }\n"
+                                "    return 0;\n"
+                                "}\n");
 
     auto res = judge(config, binary);
     REQUIRE(res.overallVerdict == Verdict::OLE);

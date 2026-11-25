@@ -6,7 +6,6 @@
 #include <expected>
 #include <filesystem>
 #include <iostream>
-#include <optional>
 #include <print>
 #include <ranges>
 #include <stdexcept>
@@ -53,12 +52,17 @@ std::string detectCompiler() {
     throw std::runtime_error("No C++ compiler found.");
 }
 
+const std::string &defaultCompiler() {
+    static const std::string detected = detectCompiler();
+    return detected;
+}
+
 } // namespace
 
 compilerResult compile(const Config &config,
                        const std::filesystem::path &source) {
-    static const std::string detectedCompiler = detectCompiler();
-    std::string compiler = config.compiler.value_or(detectedCompiler);
+    const std::string &compiler =
+        config.compiler.has_value() ? *config.compiler : defaultCompiler();
 
     std::filesystem::path outputName = source.stem().string();
 #ifdef _WIN32
@@ -70,7 +74,7 @@ compilerResult compile(const Config &config,
                 config.compileFlags.end());
     args.push_back(source.string());
     args.emplace_back("-o");
-    args.push_back(outputName);
+    args.push_back(outputName.string());
 
     if (config.verbose) {
         std::string command_str = args.front();
